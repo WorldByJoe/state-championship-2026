@@ -1,0 +1,21 @@
+{
+ "origin_e": 307100.5898890963,
+ "origin_n": 4372162.908832984,
+ "width": 1882,
+ "height": 1879,
+ "res": 1.0,
+ "z0": 1952,
+ "crs": "EPSG:6342",
+ "epsg": 6342,
+ "source": "USGS 3DEP 1 m lidar DEM, project CO_Central_and_WesternCO_2016_A16 (flown 2016), tiles LD2508-LD2514 x 1596-1602",
+ "bbox_ll": [
+  [
+   -107.24218502731887,
+   39.46053268791417
+  ],
+  [
+   -107.22086292920234,
+   39.4778705215873
+  ]
+ ]
+}

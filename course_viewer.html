@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>State Championship course</title>
+<!-- course_viewer.html · v1.6 · 2026-10-12
+     3D inspector for a high school mountain bike race course.
+     Explore: orbit and zoom the 1 m lidar terrain with the race track draped on it.
+     Ride: a bicycle-pace tour along the track; speed comes from a rider power model
+     (watts, weight, grade, corner radius, descent caution) and can be sped up or slowed.
+     Everything that belongs to one race (title, link, surface table) lives in race_info.js.
+     Data files beside this page: course_data.js (1 m DEM clip + track), aerial_data.js
+     (NAIP aerial), background_data.js (30 m surroundings), trees_data.js (lidar trees). Works from file://.
+     CHANGED: v1.6 race-specific text and surface table moved to race_info.js (which may rename classes);
+       grass-field class; legend lists only the classes a course uses; view distances scale with the course;
+       ride camera keeps ~72 degrees across on portrait phones. v1.5 profile y axis with 100 ft gridlines.
+     v1.4 track coloured by surface. v1.3 phone layout. v1.1-1.2 chevrons, Play button, trees, Locate me. -->
+<style>
+  :root{--bg:#0f1115;--panel:rgba(14,16,20,.84);--fg:#ece9e1;--dim:#9c998f;--accent:#ffb347}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:14px/1.35 -apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif;overflow:hidden}
+  #gl{position:absolute;inset:0;display:block;width:100%;height:100%;touch-action:none}
+  .panel{position:absolute;background:var(--panel);backdrop-filter:blur(6px);border-radius:10px;padding:10px 12px;box-sizing:border-box}
+  #top{left:12px;top:12px;max-width:430px}
+  #top h1{font-size:17px;margin:0 0 2px;font-weight:600}
+  #top .sub{color:var(--dim);font-size:12px}
+  .tabs{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  #btnLocate.on{background:#ff2d95;color:#fff}
+  button{background:#2a2e36;color:var(--fg);border:0;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:13px;font-family:inherit;touch-action:manipulation}
+  button.on{background:var(--accent);color:#1a1200;font-weight:600}
+  #help{color:var(--dim);font-size:12px;margin-top:6px}
+  #opts{right:12px;top:12px;font-size:13px;display:grid;gap:7px;width:250px}
+  #opts label{display:flex;justify-content:space-between;gap:8px;align-items:center}
+  #opts select{background:#2a2e36;color:var(--fg);border:0;border-radius:6px;padding:4px 6px;font-family:inherit;width:120px}
+  #legend{display:flex;gap:2px;align-items:center;font-size:11px;color:var(--dim);flex-wrap:wrap}
+  #legend i{display:inline-block;width:18px;height:10px;border-radius:2px;margin-right:2px}
+  #legend .lg{display:flex;flex-wrap:wrap;gap:2px 6px;align-items:center;width:100%}
+  #legend .lg b{width:100%;color:var(--fg);font-weight:600}
+  #legend .lg.s span{width:100%}
+  #legend .lgnote{font-size:10px;color:var(--dim);margin-top:2px}
+  #compass{width:56px;height:56px;margin:0 auto}
+  #ride{right:12px;bottom:150px;width:250px;display:none}
+  body.riding #ride{display:block}
+  .phoneOnly,#phoneBar,#menu{display:none}
+  #ride .big{font-size:32px;font-weight:600;line-height:1.05}
+  #ride .unit{font-size:13px;color:var(--dim);font-weight:400}
+  #ride .row{display:flex;justify-content:space-between;margin:3px 0;font-size:13px}
+  #ride .row b{font-weight:600}
+  #ride .ctl{display:flex;gap:4px;flex-wrap:wrap;margin-top:8px}
+  #ride .ctl button{padding:5px 8px}
+  #ride label{display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-top:6px;gap:6px}
+  #ride input[type=range]{width:110px}
+  #ride .pred{margin-top:8px;font-size:12px;color:var(--dim)}
+  #btnPlay{width:100%;font-size:18px;font-weight:700;padding:11px;background:#2ecc71;color:#06220f;margin-bottom:8px}
+  #btnPlay.playing{background:#ffb347;color:#1a1200}
+  #bigPlay{position:absolute;left:50%;top:50%;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:60px;background:rgba(46,204,113,.9);color:#06220f;font-size:60px;display:none;align-items:center;justify-content:center;cursor:pointer;padding-left:10px;box-sizing:border-box;box-shadow:0 4px 24px rgba(0,0,0,.4)}
+  #bigPlay:hover{background:#2ecc71}
+  #profile{position:absolute;left:12px;right:12px;bottom:12px;height:124px;background:var(--panel);border-radius:10px;overflow:hidden}
+  #profile canvas{width:100%;height:100%;display:block}
+  #info{left:12px;bottom:146px;font-size:13px;display:none;max-width:380px}
+  #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);font-size:16px;z-index:9;flex-direction:column;gap:8px}
+  #loading .bar{width:260px;height:6px;background:#2a2e36;border-radius:3px;overflow:hidden}
+  #loading .bar i{display:block;height:100%;width:0;background:var(--accent)}
+  /* ---- phone layout: body.phone is set by applyLayout() from the screen size ---- */
+  body.phone{--profH:84px}
+  body.phone #phoneBar{display:flex;position:absolute;left:8px;top:8px;gap:6px;z-index:3}
+  #phoneBar button{font-size:15px;padding:9px 13px;background:var(--panel);backdrop-filter:blur(6px);box-shadow:0 1px 6px rgba(0,0,0,.35)}
+  #phoneBar #btnMenu.open{background:var(--accent);color:#1a1200;font-weight:600}
+  #phoneBar #btnLocate2.on{background:#ff2d95;color:#fff}
+  body.phone.menu-open #menu{display:flex;flex-direction:column;gap:8px;position:absolute;left:8px;right:8px;top:56px;max-height:calc(100% - 72px - var(--profH));overflow-y:auto;z-index:4}
+  body.phone #menu .panel{position:static;max-width:none;width:auto}
+  body.phone #opts select{width:150px}
+  body.phone #compass{position:absolute;right:8px;top:8px;width:44px;height:44px;margin:0;z-index:2}
+  body.phone #profile{left:8px;right:8px;bottom:8px;height:var(--profH)}
+  body.phone #info{left:8px;right:8px;max-width:none;bottom:calc(var(--profH) + 14px)}
+  body.phone #bigPlay{width:76px;height:76px;margin:-38px 0 0 -38px;border-radius:38px;font-size:38px;padding-left:6px}
+  body.phone .phoneOnly{display:inline-block}
+  body.phone.riding #ride{display:flex;flex-direction:column;left:8px;right:8px;width:auto;bottom:calc(var(--profH) + 14px);padding:8px}
+  body.phone #ride .hud{display:flex;align-items:center;gap:8px;order:2}
+  body.phone #btnPlay{width:auto;flex:0 0 auto;margin:0;font-size:16px;padding:10px 16px}
+  body.phone #ride .big{font-size:22px;flex:1;white-space:nowrap}
+  body.phone #ride .rows,body.phone #ride .ctl{display:none}
+  body.phone #ride .hud button.phoneOnly{padding:9px 11px;font-size:14px}
+  body.phone #btnRider.on{background:var(--accent);color:#1a1200}
+  body.phone #ride .rider{display:none;order:1;margin-bottom:6px}
+  body.phone #ride.expanded .rider{display:block}
+  body.phone #ride input[type=range]{width:100%}
+  @media (min-width:600px){body.phone.menu-open #menu{flex-direction:row;align-items:flex-start}body.phone #menu #top{flex:1}body.phone #menu #opts{flex:0 0 270px}}
+  @media (max-height:500px){
+    body.phone{--profH:64px}
+    body.phone.riding #ride{top:8px;bottom:auto;left:auto;right:60px}
+    body.phone #ride .hud{order:1}
+    body.phone #ride .rider{order:2;margin:6px 0 0}
+  }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="bigPlay" title="Play the ride (space)">▶</div>
+<div id="loading"><div>Loading the lidar terrain…</div><div class="bar"><i id="lbar"></i></div></div>
+<div id="phoneBar"><button id="btnMenu">☰ Explore</button><button id="btnLocate2" title="Show where you are from this device's GPS">📍</button></div>
+<div id="menu"></div>
+
+<div id="top" class="panel">
+  <h1 id="raceTitle"></h1>
+  <div class="sub" id="raceSub"></div>
+  <div class="tabs">
+    <button id="tabExplore" class="on">Explore 3D</button>
+    <button id="tabRide">Ride the course</button>
+    <button id="btnStart" title="Fly the camera to the start line">To start</button>
+    <button id="btnTop" title="Look straight down on the whole course">Top view</button>
+    <button id="btnLocate" title="Show where you are from this device's GPS">📍 Locate me</button>
+  </div>
+  <div id="help">Drag to spin · scroll to zoom · right-drag to pan · click the track or the profile for details.</div>
+</div>
+
+<div id="opts" class="panel">
+  <label>Surface <select id="selSurface"><option value="aerial">Aerial photo</option><option value="relief">Shaded relief</option></select></label>
+  <label>Vertical scale <select id="selVert"><option value="1">×1 (true)</option><option value="1.5">×1.5</option><option value="2">×2</option><option value="3">×3</option></select></label>
+  <label>Terrain detail <select id="selDetail"><option value="2">2 m (fast)</option><option value="1">1 m (full lidar)</option></select></label>
+  <label>Track colour <select id="selTrackCol"><option value="surface">Surface</option><option value="grade">Grade</option></select></label>
+  <label>Trees (lidar) <select id="selTrees"><option value="1">shown</option><option value="0">hidden</option></select></label>
+  <label>Units <select id="selUnits"><option value="us">miles · feet</option><option value="si">km · metres</option></select></label>
+  <div id="legend"></div>
+  <canvas id="compass" width="112" height="112"></canvas>
+</div>
+
+<div id="info" class="panel"></div>
+
+<div id="ride" class="panel">
+  <div class="hud">
+    <button id="btnPlay">▶ Play the ride</button>
+    <div class="big"><span id="rSpeed">0.0</span> <span class="unit" id="rSpeedU">mph</span></div>
+    <button id="btnMult" class="phoneOnly" title="Playback speed: tap to change">1×</button>
+    <button id="btnRider" class="phoneOnly" title="Rider power, weight and nerve">Rider</button>
+  </div>
+  <div class="rows">
+    <div class="row"><span>Grade</span><b id="rGrade">0%</b></div>
+    <div class="row"><span>Surface</span><b id="rSurf">-</b></div>
+    <div class="row"><span>Elevation</span><b id="rEle">-</b></div>
+    <div class="row"><span>Distance</span><b id="rDist">-</b></div>
+    <div class="row"><span>Lap time</span><b id="rTime">0:00</b></div>
+    <div class="row"><span>Heading</span><b id="rHead">-</b></div>
+  </div>
+  <div class="ctl">
+    <span style="color:var(--dim);font-size:12px;align-self:center">Speed</span>
+    <button data-mult="0.5">½×</button><button data-mult="1" class="on">1×</button><button data-mult="2">2×</button><button data-mult="4">4×</button><button data-mult="8">8×</button>
+  </div>
+  <div class="rider">
+    <label>Rider power <span><span id="vWatts">230</span> W</span></label><input type="range" id="inWatts" min="120" max="400" step="5" value="230">
+    <label>Rider weight <span><span id="vMass">62</span> kg</span></label><input type="range" id="inMass" min="40" max="100" step="1" value="62">
+    <label>Descending nerve <span id="vNerve">1.0</span></label><input type="range" id="inNerve" min="0.6" max="1.3" step="0.05" value="1">
+    <div class="pred" id="rPred"></div>
+    <div class="pred" id="rideHelp">Space = play/pause · ← → = scrub · drag = look around · double-click = look ahead</div>
+  </div>
+</div>
+
+<div id="profile"><canvas id="prof"></canvas></div>
+
+<script src="lib/three.min.js"></script>
+<script src="lib/OrbitControls.js"></script>
+<script src="race_info.js"></script>
+<script src="course_data.js"></script>
+<script src="aerial_data.js"></script>
+<script src="background_data.js"></script>
+<script src="trees_data.js"></script>
+<script>
+'use strict';
+// ---------- data and units ----------------------------------------------
+const T = window.COURSE_TRACK, INFO = window.COURSE_INFO, BG = window.BG_INFO || null;
+const N = T.s.length, DS = 2, LEN = T.length_m, Z0 = INFO.z0;
+const MI = 1609.344, FT = 0.3048;
+let units = 'us';
+const fmtDist = m => units === 'us' ? (m / MI).toFixed(2) + ' mi' : (m / 1000).toFixed(2) + ' km';
+const fmtEle = m => units === 'us' ? Math.round(m / FT).toLocaleString() + ' ft' : m.toFixed(1) + ' m';
+const fmtSpd = v => units === 'us' ? (v * 3.6 / 1.609344).toFixed(1) : (v * 3.6).toFixed(1);
+const fmtTime = s => { s = Math.round(s); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(ss).padStart(2, '0'); };
+const lerp = (a, b, f) => a + (b - a) * f;
+
+// grade colour ramp: red = steep climb, blue = steep descent
+function gradeColor(g) {
+  const stops = [[-15, [40, 90, 220]], [-8, [60, 150, 230]], [-3, [110, 200, 150]], [0, [235, 235, 225]], [3, [250, 215, 90]], [8, [245, 130, 50]], [15, [215, 40, 40]]];
+  if (g <= stops[0][0]) return stops[0][1]; if (g >= stops[stops.length - 1][0]) return stops[stops.length - 1][1];
+  for (let i = 1; i < stops.length; i++) if (g <= stops[i][0]) { const f = (g - stops[i - 1][0]) / (stops[i][0] - stops[i - 1][0]); return stops[i - 1][1].map((c, k) => Math.round(lerp(c, stops[i][1][k], f))); }
+}
+// Surface classes. The table of where each one runs along the lap (RACE.surface, in miles) and how it
+// was read live in race_info.js.
+const SURF_KIND = {
+  grass:  { label: 'Grass field', width: 'open', pass: 'pass anywhere', rgb: [90, 205, 230] },
+  road:   { label: 'Ranch road', width: '~4 m', pass: 'room to pass', rgb: [46, 204, 113] },
+  two:    { label: 'Two-track', width: '~3 m, two ruts', pass: 'pass in the other rut', rgb: [200, 232, 90] },
+  single: { label: 'Singletrack', width: 'under 1 m', pass: 'single file', rgb: [255, 122, 26] },
+};
+const RACE = window.RACE, SURFACE = RACE.surface;
+for (const [k, v] of Object.entries(RACE.kinds || {})) SURF_KIND[k] = Object.assign({}, SURF_KIND[k] || {}, v);   // a race may rename or re-width a class
+document.title = RACE.pageTitle; document.getElementById('raceTitle').textContent = RACE.title; document.getElementById('raceSub').textContent = RACE.subtitle;
+function surfaceAt(s) { const mi = s / 1609.344; for (const r of SURFACE) if (mi >= r[0] && mi < r[1]) return r; return SURFACE[SURFACE.length - 1]; }
+let trackColour = 'surface';
+function drawLegend() {
+  const gradeRow = [-15, -8, -3, 0, 3, 8, 15].map(g => `<span><i style="background:rgb(${gradeColor(g).join(',')})"></i>${g > 0 ? '+' : ''}${g}%</span>`).join('');
+  const surfRow = Object.keys(SURF_KIND).filter(k => SURFACE.some(r => r[2] === k)).map(k => SURF_KIND[k]).map(k => `<span><i style="background:rgb(${k.rgb.join(',')})"></i>${k.label} ${k.width}</span>`).join('');
+  document.getElementById('legend').innerHTML = trackColour === 'surface'
+    ? `<div class="lg s"><b>Track: surface</b>${surfRow}</div><div class="lg"><b>Profile: grade, surface bar along the bottom</b>${gradeRow}</div><div class="lgnote">${RACE.surfaceNote}</div>`
+    : `<div class="lg"><b>Track and profile: grade</b>${gradeRow}</div>`;
+}
+drawLegend();
+
+// ---------- height decoding ----------------------------------------------
+function decodeHeights(uri, w, h, z0, scale) {
+  return new Promise(res => {
+    const im = new Image();
+    im.onload = () => {
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(im, 0, 0);
+      const d = g.getImageData(0, 0, w, h).data, out = new Float32Array(w * h);
+      for (let i = 0, j = 0; i < out.length; i++, j += 4) out[i] = z0 + (d[j] * 256 + d[j + 1]) / scale;
+      res(out);
+    };
+    im.src = uri;
+  });
+}
+let HF = null, BGHF = null;            // elevation arrays (metres above sea level)
+const bgOff = BG ? { x: BG.origin_e - INFO.origin_e, z: INFO.origin_n - BG.origin_n } : null; // local offset of the bg grid
+
+// bilinear ground elevation at local (x, z); x east, z south, metres from the NW corner of the fine clip
+function groundEle(x, z) {
+  if (x >= 0 && z >= 0 && x <= INFO.width - 1 && z <= INFO.height - 1) {
+    const c0 = Math.min(Math.floor(x), INFO.width - 2), r0 = Math.min(Math.floor(z), INFO.height - 2), fc = x - c0, fr = z - r0, W = INFO.width;
+    return HF[r0 * W + c0] * (1 - fc) * (1 - fr) + HF[r0 * W + c0 + 1] * fc * (1 - fr) + HF[(r0 + 1) * W + c0] * (1 - fc) * fr + HF[(r0 + 1) * W + c0 + 1] * fc * fr;
+  }
+  if (BGHF) {
+    const gx = (x - bgOff.x) / BG.res, gz = (z - bgOff.z) / BG.res;
+    if (gx >= 0 && gz >= 0 && gx <= BG.width - 1 && gz <= BG.height - 1) {
+      const c0 = Math.min(Math.floor(gx), BG.width - 2), r0 = Math.min(Math.floor(gz), BG.height - 2), fc = gx - c0, fr = gz - r0, W = BG.width;
+      return BGHF[r0 * W + c0] * (1 - fc) * (1 - fr) + BGHF[r0 * W + c0 + 1] * fc * (1 - fr) + BGHF[(r0 + 1) * W + c0] * (1 - fc) * fr + BGHF[(r0 + 1) * W + c0 + 1] * fc * fr;
+    }
+  }
+  return null;
+}
+
+// ---------- scene --------------------------------------------------------
+const canvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+const scene = new THREE.Scene();
+const SKY = 0xcfe3f5; scene.background = new THREE.Color(SKY);
+scene.fog = new THREE.Fog(SKY, 4000, 40000);
+const camera = new THREE.PerspectiveCamera(55, 1, 0.5, 80000);
+const world = new THREE.Group(); scene.add(world);   // everything terrain-fixed; world.scale.y = vertical exaggeration
+let vert = 1;
+scene.add(new THREE.AmbientLight(0xffffff, 0.42));
+const hemi = new THREE.HemisphereLight(0xbfd8ff, 0x6b5a3f, 0.35); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff2dc, 1.05); sun.position.set(-0.55, 0.85, 0.7).multiplyScalar(10000); scene.add(sun);
+
+const controls = new THREE.OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = 0.08; controls.screenSpacePanning = false;
+controls.maxPolarAngle = Math.PI * 0.495; controls.minDistance = 3; controls.maxDistance = 30000;
+
+const cx = (Math.min(...T.x) + Math.max(...T.x)) / 2, cz = -(Math.min(...T.y) + Math.max(...T.y)) / 2;
+const cy = (Math.min(...T.z) + Math.max(...T.z)) / 2 - Z0;
+const EXT = Math.max(Math.max(...T.x) - Math.min(...T.x), Math.max(...T.y) - Math.min(...T.y));   // course size, sets the overview distances
+const RELIEF_LO = Math.min(...T.z) - 10, RELIEF_SPAN = Math.max(...T.z) - Math.min(...T.z) + 60;  // hypsometric colours span the course's elevations
+
+// --- grid mesh builder (optionally with a rectangular hole in local x/z) ---
+function buildGrid(hf, W, H, step, ox, oz, cell, hole) {
+  const cols = Math.floor((W - 1) / step) + 1, rows = Math.floor((H - 1) / step) + 1;
+  const pos = new Float32Array(cols * rows * 3), uv = new Float32Array(cols * rows * 2);
+  for (let r = 0; r < rows; r++) { const rr = r * step; for (let c = 0; c < cols; c++) { const cc = c * step, i = r * cols + c; pos[3 * i] = ox + cc * cell; pos[3 * i + 1] = hf[rr * W + cc] - Z0; pos[3 * i + 2] = oz + rr * cell; uv[2 * i] = cc / (W - 1); uv[2 * i + 1] = 1 - rr / (H - 1); } }
+  const idx = new Uint32Array((cols - 1) * (rows - 1) * 6); let k = 0;
+  for (let r = 0; r < rows - 1; r++) for (let c = 0; c < cols - 1; c++) {
+    if (hole) { const x = ox + (c + 0.5) * step * cell, z = oz + (r + 0.5) * step * cell; if (x > hole[0] && x < hole[1] && z > hole[2] && z < hole[3]) continue; }
+    const a = r * cols + c, b = a + 1, d = a + cols, e = d + 1;
+    idx[k++] = a; idx[k++] = d; idx[k++] = b; idx[k++] = b; idx[k++] = d; idx[k++] = e;
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setIndex(new THREE.BufferAttribute(k === idx.length ? idx : idx.slice(0, k), 1));
+  g.computeVertexNormals();
+  // hypsometric vertex colours for the relief surface
+  const col = new Float32Array(cols * rows * 3);
+  for (let i = 0; i < cols * rows; i++) { const e = pos[3 * i + 1] + Z0, f = Math.min(Math.max((e - RELIEF_LO) / RELIEF_SPAN, 0), 1); col[3 * i] = lerp(0.58, 0.78, f); col[3 * i + 1] = lerp(0.62, 0.68, f); col[3 * i + 2] = lerp(0.42, 0.52, f); }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
+let fineMesh = null, bgMesh = null, texFine = null, texBg = null, surface = 'aerial';
+const matAerial = () => new THREE.MeshLambertMaterial({ map: texFine });
+const matRelief = () => new THREE.MeshLambertMaterial({ vertexColors: true, color: 0x7a7a7a });
+function buildFine(step) {
+  if (fineMesh) { world.remove(fineMesh); fineMesh.geometry.dispose(); }
+  fineMesh = new THREE.Mesh(buildGrid(HF, INFO.width, INFO.height, step, 0, 0, 1, null), surface === 'aerial' ? matAerial() : matRelief());
+  world.add(fineMesh);
+}
+function applySurface() {
+  if (fineMesh) { fineMesh.material.dispose(); fineMesh.material = surface === 'aerial' ? matAerial() : matRelief(); }
+  if (bgMesh) { bgMesh.material.dispose(); bgMesh.material = surface === 'aerial' ? new THREE.MeshLambertMaterial({ map: texBg }) : matRelief(); }
+}
+
+// --- trees from the lidar canopy: instanced cones (conifers) and crowns on trunks (broadleaf) ---
+let treeGroup = null;
+function buildTrees() {
+  if (!window.TREES) return null;
+  const bin = Uint8Array.from(atob(window.TREES.b64), c => c.charCodeAt(0)), dv = new DataView(bin.buffer), n = window.TREES.n, REC = window.TREES.rec;
+  let nc = 0, nb = 0; for (let i = 0; i < n; i++) (bin[i * REC + 9] ? nb++ : nc++);
+  const cone = new THREE.ConeGeometry(1, 1, 6); cone.translate(0, 0.5, 0);
+  const crown = new THREE.IcosahedronGeometry(1, 1);
+  const trunk = new THREE.CylinderGeometry(1, 1, 1, 5); trunk.translate(0, 0.5, 0);
+  const conifers = new THREE.InstancedMesh(cone, new THREE.MeshLambertMaterial(), Math.max(nc, 1));
+  const crowns = new THREE.InstancedMesh(crown, new THREE.MeshLambertMaterial(), Math.max(nb, 1));
+  const trunks = new THREE.InstancedMesh(trunk, new THREE.MeshLambertMaterial({ color: 0x5a4632 }), Math.max(nb, 1));
+  const M = new THREE.Matrix4(), C = new THREE.Color(); let ic = 0, ib = 0;
+  for (let i = 0; i < n; i++) {
+    const o = i * REC, x = dv.getInt16(o, true) + 0.5, zz = dv.getInt16(o + 2, true) + 0.5, h = bin[o + 4] / 4, r = bin[o + 5] / 10, type = bin[o + 9];
+    const ge = groundEle(x, zz); if (ge === null) continue; const y = ge - Z0;
+    C.setRGB(bin[o + 6] / 255, bin[o + 7] / 255, bin[o + 8] / 255).multiplyScalar(0.72);   // the scene lights sum to ~1.5, so hold the crowns down
+    if (type === 0) { M.makeScale(r, h, r).setPosition(x, y, zz); conifers.setMatrixAt(ic, M); conifers.setColorAt(ic, C); ic++; }
+    else {
+      const cr = r * 0.85; M.makeScale(r, cr, r).setPosition(x, y + h - cr, zz); crowns.setMatrixAt(ib, M); crowns.setColorAt(ib, C);
+      const tr = Math.max(0.12, 0.05 * h); M.makeScale(tr, Math.max(h - cr, 0.5), tr).setPosition(x, y, zz); trunks.setMatrixAt(ib, M); ib++;
+    }
+  }
+  conifers.count = ic; crowns.count = ib; trunks.count = ib;
+  [conifers, crowns, trunks].forEach(m => { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; });
+  treeGroup = new THREE.Group(); treeGroup.add(conifers, crowns, trunks); world.add(treeGroup);
+  return { conifers: ic, broadleaf: ib };
+}
+
+// --- the track ribbon coloured by grade, plus markers ----------------------
+const trackGroup = new THREE.Group(); world.add(trackGroup);
+function trackAt(s) {           // local point on the track at distance s (metres); y is true elevation
+  const i = Math.min(Math.max(s / DS, 0), N - 1), i0 = Math.floor(i), f = i - i0, i1 = Math.min(i0 + 1, N - 1);
+  return { x: lerp(T.x[i0], T.x[i1], f), e: lerp(T.z[i0], T.z[i1], f), z: -lerp(T.y[i0], T.y[i1], f), g: lerp(T.grade[i0], T.grade[i1], f) };
+}
+function headingAt(s, base = 8) { const a = trackAt(Math.max(s - base, 0)), b = trackAt(Math.min(s + base, LEN)); return Math.atan2(b.x - a.x, -(b.z - a.z)); } // bearing, 0 = north, clockwise
+function buildTrack() {
+  // The track is a flat ribbon whose half-width is set per frame in the vertex shader from the camera
+  // distance (about 3 px on screen, never thinner than 0.7 m nor wider than 40 m), coloured by grade,
+  // with dark chevrons every 25 m pointing the direction of travel, over a slightly wider and lower
+  // dark ribbon that gives it an outline.
+  const vs = `attribute float side; attribute float along; attribute vec3 perp; attribute vec3 gcol;
+    varying vec3 vColor; varying float vS; varying float vLat; uniform float kw, minW, maxW, drop;
+    void main(){ vColor = gcol; vS = along; vLat = side; vec4 wp = modelMatrix * vec4(position, 1.0);
+      float d = distance(wp.xyz, cameraPosition); float hw = clamp(d * kw, minW, maxW);
+      vec3 p = position + perp * side * hw; p.y -= drop; gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0); }`;
+  const fs = `varying vec3 vColor; varying float vS; varying float vLat; uniform float dim, chev;
+    void main(){ float f = fract((vS + 4.0 * abs(vLat)) / 25.0); float c = chev * step(f, 0.12);
+      gl_FragColor = vec4(vColor * dim * (1.0 - 0.6 * c), 1.0); }`;
+  const pos = new Float32Array(N * 6), side = new Float32Array(N * 2), along = new Float32Array(N * 2), perp = new Float32Array(N * 6), col = new Float32Array(N * 6), colS = new Float32Array(N * 6);
+  for (let i = 0; i < N; i++) {
+    const i0 = Math.max(i - 2, 0), i1 = Math.min(i + 2, N - 1); let dx = T.x[i1] - T.x[i0], dz = -(T.y[i1] - T.y[i0]); const L = Math.hypot(dx, dz) || 1; dx /= L; dz /= L;
+    const c = gradeColor(T.grade[i]), cs = SURF_KIND[surfaceAt(T.s[i])[2]].rgb;
+    for (let k = 0; k < 2; k++) { const v = 2 * i + k; pos[3 * v] = T.x[i]; pos[3 * v + 1] = Math.max(T.z[i], T.zraw[i]) - Z0 + 0.45; pos[3 * v + 2] = -T.y[i]; side[v] = k ? 1 : -1; along[v] = T.s[i]; perp[3 * v] = -dz; perp[3 * v + 1] = 0; perp[3 * v + 2] = dx; col[3 * v] = c[0] / 255; col[3 * v + 1] = c[1] / 255; col[3 * v + 2] = c[2] / 255; colS[3 * v] = cs[0] / 255; colS[3 * v + 1] = cs[1] / 255; colS[3 * v + 2] = cs[2] / 255; }
+  }
+  const idx = new Uint32Array((N - 1) * 6); for (let i = 0, k = 0; i < N - 1; i++) { const a = 2 * i; idx[k++] = a; idx[k++] = a + 1; idx[k++] = a + 2; idx[k++] = a + 1; idx[k++] = a + 3; idx[k++] = a + 2; }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('side', new THREE.BufferAttribute(side, 1)); g.setAttribute('along', new THREE.BufferAttribute(along, 1)); g.setAttribute('perp', new THREE.BufferAttribute(perp, 3)); g.setAttribute('gcol', new THREE.BufferAttribute(new Float32Array(N * 6), 3)); g.setIndex(new THREE.BufferAttribute(idx, 1));
+  trackColData = { grade: col, surface: colS }; trackColAttr = g.getAttribute('gcol'); applyTrackColour();
+  const mk = (kw, minW, maxW, drop, dim, chev) => new THREE.Mesh(g, new THREE.ShaderMaterial({ vertexShader: vs, fragmentShader: fs, side: THREE.DoubleSide, uniforms: { kw: { value: kw }, minW: { value: minW }, maxW: { value: maxW }, drop: { value: drop }, dim: { value: dim }, chev: { value: chev } } }));
+  trackGroup.add(mk(0.0052, 0.85, 52, 0.12, 0.18, 0)); trackGroup.add(mk(0.004, 0.7, 40, 0, 1, 1));
+  rebuildMarkers();
+}
+let trackColAttr = null, trackColData = null;
+function applyTrackColour() { if (!trackColAttr) return; trackColAttr.array.set(trackColData[trackColour]); trackColAttr.needsUpdate = true; drawLegend(); drawProfileBase(); }
+let markerGroup = null;
+function labelSprite(text, scale = 14, color = '#fff') {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 96; const g = c.getContext('2d');
+  g.fillStyle = 'rgba(10,12,16,.78)'; g.beginPath(); g.roundRect ? g.roundRect(4, 4, 248, 88, 18) : g.rect(4, 4, 248, 88); g.fill();
+  g.font = 'bold 54px Helvetica, Arial'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = color; g.fillText(text, 128, 50);
+  const tex = new THREE.CanvasTexture(c); tex.encoding = THREE.sRGBEncoding;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex })); sp.scale.set(scale, scale * 96 / 256, 1); return sp;
+}
+function post(p, h, color) { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, h, 6), new THREE.MeshLambertMaterial({ color })); m.position.set(p.x, p.e - Z0 + h / 2, p.z); return m; }
+function rebuildMarkers() {
+  if (markerGroup) trackGroup.remove(markerGroup);
+  markerGroup = new THREE.Group(); trackGroup.add(markerGroup);
+  const addLabel = (s, text, color, h) => { const p = trackAt(s); markerGroup.add(post(p, h, 0xdddddd)); const sp = labelSprite(text, 16, color); sp.position.set(p.x, p.e - Z0 + h + 2.5, p.z); markerGroup.add(sp); };
+  addLabel(0, 'START', '#7CFC9A', 7); addLabel(LEN - 1, 'FINISH', '#ff8a8a', 7);
+  const unit = units === 'us' ? MI : 1000, name = units === 'us' ? ' mi' : ' km';
+  for (let k = 1; k * unit < LEN; k++) addLabel(k * unit, k + name, '#fff', 4);
+}
+
+// ---------- pace model ---------------------------------------------------
+// Speed from a rider power model: P = v·(m·g·(sin θ + crr·cos θ)) + ½ρ·CdA·v³, capped by corner radius
+// (lateral 3.5 m/s² on dirt), by a descent-caution curve that tightens on steep grades, and by 50 km/h.
+// Then a braking pass (3 m/s²) backwards and an acceleration pass (power-limited, ≤1.5 m/s²) forwards.
+const pace = { P: 230, mass: 62, nerve: 1, v: null, t: null, lap: 0 };
+function computePace() {
+  const m = pace.mass + 12, g0 = 9.81, rho = 0.96, CdA = 0.42, crr = 0.012, aLat = 3.5 * pace.nerve;
+  const vt = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const g = T.grade[i] / 100, th = Math.atan(g), b = m * g0 * (Math.sin(th) + crr * Math.cos(th)), a = 0.5 * rho * CdA;
+    let v = 8; for (let k = 0; k < 40; k++) { const f = a * v * v * v + b * v - pace.P, d = 3 * a * v * v + b; let nv = v - f / Math.max(d, 1e-3); if (!(nv > 0)) nv = v / 2; if (Math.abs(nv - v) < 1e-4) { v = nv; break; } v = nv; }
+    let cap = g > -0.04 ? 12 : g < -0.15 ? 6 : 12 - ((-g) - 0.04) / 0.11 * 6; cap *= pace.nerve;
+    const i0 = Math.max(i - 3, 0), i1 = Math.min(i + 3, N - 1);
+    const h1 = Math.atan2(T.y[i] - T.y[i0], T.x[i] - T.x[i0]), h2 = Math.atan2(T.y[i1] - T.y[i], T.x[i1] - T.x[i]);
+    let dh = h2 - h1; while (dh > Math.PI) dh -= 2 * Math.PI; while (dh < -Math.PI) dh += 2 * Math.PI;
+    const kappa = Math.abs(dh) / Math.max((i1 - i0) * DS / 2, 1), vc = Math.sqrt(aLat / Math.max(kappa, 1e-4));
+    vt[i] = Math.min(v, cap, vc, 14);
+  }
+  const v = new Float32Array(N); v[N - 1] = vt[N - 1];
+  for (let i = N - 2; i >= 0; i--) v[i] = Math.min(vt[i], Math.sqrt(v[i + 1] ** 2 + 2 * 3.0 * DS));
+  v[0] = Math.min(v[0], 5);
+  for (let i = 1; i < N; i++) {
+    const vp = v[i - 1], g = T.grade[i] / 100, th = Math.atan(g);
+    const force = pace.P / Math.max(vp, 1.5) - m * g0 * (Math.sin(th) + crr * Math.cos(th)) - 0.5 * rho * CdA * vp * vp;
+    v[i] = Math.min(v[i], Math.sqrt(Math.max(vp * vp + 2 * Math.min(1.5, force / m) * DS, 0.25)));
+  }
+  const t = new Float32Array(N); for (let i = 1; i < N; i++) t[i] = t[i - 1] + DS / ((v[i - 1] + v[i]) / 2);
+  pace.v = v; pace.t = t; pace.lap = t[N - 1];
+  document.getElementById('rPred').textContent = `Predicted lap at ${pace.P} W: ${fmtTime(pace.lap)} · average ${fmtSpd(LEN / pace.lap)} ${units === 'us' ? 'mph' : 'km/h'}`;
+  drawProfileBase();
+}
+const speedAt = s => { const i = Math.min(Math.max(s / DS, 0), N - 1), i0 = Math.floor(i), i1 = Math.min(i0 + 1, N - 1); return lerp(pace.v[i0], pace.v[i1], i - i0); };
+const timeAt = s => { const i = Math.min(Math.max(s / DS, 0), N - 1), i0 = Math.floor(i), i1 = Math.min(i0 + 1, N - 1); return lerp(pace.t[i0], pace.t[i1], i - i0); };
+
+// ---------- profile strip ------------------------------------------------
+const prof = document.getElementById('prof'), pg = prof.getContext('2d');
+let profBase = null, PW = 0, PH = 0, hoverS = null;
+const PAD = { l: 48, r: 14, t: 24, b: 18 };
+const eMin = Math.min(...T.z), eMax = Math.max(...T.z);
+const sToX = s => PAD.l + s / LEN * (PW - PAD.l - PAD.r), xToS = x => (x - PAD.l) / (PW - PAD.l - PAD.r) * LEN;
+const eToY = e => PAD.t + (1 - (e - eMin) / (eMax - eMin)) * (PH - PAD.t - PAD.b);
+function drawProfileBase() {
+  const dpr = Math.min(devicePixelRatio, 2), r = prof.getBoundingClientRect();
+  if (r.width < 10 || r.height < 10) return;
+  PW = r.width; PH = r.height; prof.width = PW * dpr; prof.height = PH * dpr;
+  const narrow = PW < 560, tight = narrow || PH < 100; PAD.l = narrow ? 44 : 48; PAD.t = tight ? 17 : 24; PAD.b = tight ? 15 : 18;   // phones: thinner margins
+  const c = document.createElement('canvas'); c.width = prof.width; c.height = prof.height; const g = c.getContext('2d'); g.scale(dpr, dpr);
+  // elevation grid every 100 ft (25 m in metric): faint white over the empty background, dark over the coloured fill
+  const step = units === 'us' ? 100 * FT : 25, grid = [];
+  for (let e = Math.ceil(eMin / step - 1e-9) * step; e <= eMax + 1e-9; e += step) grid.push(e);
+  const gridLines = color => { g.strokeStyle = color; g.lineWidth = 1; for (const e of grid) { const y = Math.round(eToY(e)) + 0.5; g.beginPath(); g.moveTo(PAD.l, y); g.lineTo(PW - PAD.r, y); g.stroke(); } };
+  gridLines('rgba(255,255,255,0.22)');
+  for (let i = 0; i < N - 1; i++) { const col = gradeColor(T.grade[i]); g.fillStyle = `rgb(${col.join(',')})`; const x0 = sToX(T.s[i]), x1 = sToX(T.s[i + 1]) + 0.6; g.fillRect(x0, eToY(T.z[i]), x1 - x0, PH - PAD.b - eToY(T.z[i])); }
+  g.save(); g.beginPath(); g.moveTo(sToX(0), PH - PAD.b); for (let i = 0; i < N; i++) g.lineTo(sToX(T.s[i]), eToY(T.z[i])); g.lineTo(sToX(T.s[N - 1]), PH - PAD.b); g.closePath(); g.clip();
+  gridLines('rgba(15,17,21,0.4)'); g.restore();
+  g.strokeStyle = '#fff'; g.lineWidth = 1.2; g.beginPath(); for (let i = 0; i < N; i++) { const x = sToX(T.s[i]), y = eToY(T.z[i]); i ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke();
+  if (trackColour === 'surface') { const bh = tight ? 4 : 5; for (const r of SURFACE) { g.fillStyle = `rgb(${SURF_KIND[r[2]].rgb.join(',')})`; const x0 = sToX(r[0] * MI), x1 = sToX(Math.min(r[1] * MI, LEN)); g.fillRect(x0, PH - PAD.b - bh, x1 - x0, bh); } }   // passing zones along the lap
+  // y axis: a thin line, a tick at each gridline, and labels at least 13 px apart (every other line on short phone strips)
+  g.fillStyle = 'rgba(156,153,143,0.7)'; g.fillRect(PAD.l - 1, PAD.t, 1, PH - PAD.t - PAD.b);
+  g.fillStyle = '#9c998f'; g.font = '11px Helvetica, Arial'; g.textAlign = 'right';
+  const every = Math.max(1, Math.ceil(13 / (eToY(eMin) - eToY(eMin + step))));
+  grid.forEach((e, k) => { const y = Math.round(eToY(e)); g.fillRect(PAD.l - 5, y, 5, 1); if (k % every === 0) g.fillText(units === 'us' ? Math.round(e / FT).toLocaleString() + ' ft' : Math.round(e) + ' m', PAD.l - 7, y + 4); });
+  g.textAlign = 'center'; const unit = units === 'us' ? MI : 1000;
+  for (let k = 0; k * unit <= LEN; k++) { const x = sToX(k * unit); g.fillText(k + (units === 'us' ? ' mi' : ' km'), x, PH - 5); g.fillStyle = '#ece9e1'; g.fillRect(x, PH - PAD.b - 7, 1.5, 7); g.fillStyle = '#9c998f'; }
+  g.textAlign = 'left'; g.fillStyle = '#ece9e1'; g.font = 'bold 12px Helvetica, Arial';
+  if (tight) g.font = 'bold 11px Helvetica, Arial';
+  if (!narrow) g.fillText(`${fmtDist(LEN)} · climbs ${fmtEle(T.gain_m)} · descends ${fmtEle(T.loss_m)} · ${fmtEle(eMin)} to ${fmtEle(eMax)}`, PAD.l, tight ? 12 : 15);
+  profBase = c;
+}
+function drawProfile(sCur) {
+  if (!profBase || !profBase.width) return;
+  pg.setTransform(1, 0, 0, 1, 0, 0); pg.clearRect(0, 0, prof.width, prof.height); pg.drawImage(profBase, 0, 0);
+  const dpr = prof.width / PW; pg.scale(dpr, dpr);
+  const draw = (s, color, line) => { const x = sToX(s), p = trackAt(s);
+    pg.fillStyle = '#0f1115'; pg.beginPath(); pg.arc(x, eToY(p.e), 7, 0, 7); pg.fill(); pg.fillStyle = color; pg.beginPath(); pg.arc(x, eToY(p.e), 5, 0, 7); pg.fill();
+    const txt = `${fmtDist(s)} · ${fmtEle(p.e)} · ${p.g > 0 ? '+' : ''}${p.g.toFixed(1)}%` + (pace.t ? ` · ${fmtTime(timeAt(s))}` : '') + ` · ${SURF_KIND[surfaceAt(s)[2]].label.toLowerCase()}`;
+    pg.font = (PAD.t < 20 ? 'bold 11px' : 'bold 12px') + ' Helvetica, Arial'; pg.textAlign = 'right'; pg.fillStyle = color; pg.fillText(txt, PW - PAD.r - 4, PAD.t - (PAD.t < 20 ? 5 : 8) + line * 14); };
+  if (sCur != null) draw(sCur, '#ffb347', 0);
+  if (hoverS != null && hoverS !== sCur) draw(hoverS, '#7CFC9A', sCur != null ? 1 : 0);
+  if (PW < 560 && sCur == null && hoverS == null) { pg.font = 'bold 11px Helvetica, Arial'; pg.textAlign = 'left'; pg.fillStyle = '#ece9e1'; pg.fillText(`${fmtDist(LEN)} lap · climbs ${fmtEle(T.gain_m)}`, 8, 12); }   // short summary on phones
+}
+
+// ---------- modes, HUD, interaction --------------------------------------
+let mode = 'explore', playing = false, mult = 1, sRide = 0, lookYaw = 0, lookPitch = 0, lastT = performance.now();
+const hoverMarker = new THREE.Mesh(new THREE.SphereGeometry(2.5, 16, 12), new THREE.MeshLambertMaterial({ color: 0x7cfc9a, emissive: 0x1d5a2a })); hoverMarker.visible = false; world.add(hoverMarker);
+const rideMarker = new THREE.Mesh(new THREE.SphereGeometry(2.5, 16, 12), new THREE.MeshLambertMaterial({ color: 0xffb347, emissive: 0x6a3f00 })); rideMarker.visible = false; world.add(rideMarker);
+const $ = id => document.getElementById(id);
+
+function setMode(m) {
+  mode = m; $('tabExplore').classList.toggle('on', m === 'explore'); $('tabRide').classList.toggle('on', m === 'ride');
+  document.body.classList.toggle('riding', m === 'ride'); $('info').style.display = 'none';
+  controls.enabled = m === 'explore'; rideMarker.visible = false;
+  if (m === 'ride') scene.fog = new THREE.Fog(SKY, 1500, 20000);
+  else { scene.fog = new THREE.Fog(SKY, 4000, 40000); playing = false; flyToStart(); }
+  setHelp(); setMenu(false); syncPlayUI(); setFov();
+}
+function flyToStart() { const p = trackAt(0); controls.target.set(p.x, (p.e - Z0) * vert, p.z); camera.position.set(p.x + 180, (p.e - Z0) * vert + 140, p.z + 260); controls.update(); }
+function topView() { controls.target.set(cx, cy * vert, cz); camera.position.set(cx, cy * vert + EXT, cz + 1); controls.update(); }
+$('tabExplore').onclick = () => setMode('explore'); $('tabRide').onclick = () => setMode('ride');
+$('btnStart').onclick = () => { if (mode !== 'explore') setMode('explore'); flyToStart(); };
+$('btnTop').onclick = () => { if (mode !== 'explore') setMode('explore'); topView(); };
+$('selSurface').onchange = e => { surface = e.target.value; applySurface(); };
+$('selVert').onchange = e => { const p = trackAt(sRide); vert = +e.target.value; world.scale.y = vert; controls.target.y = groundEle(controls.target.x, controls.target.z) !== null ? (groundEle(controls.target.x, controls.target.z) - Z0) * vert : controls.target.y; };
+$('selDetail').onchange = e => { $('loading').style.display = 'flex'; $('loading').firstElementChild.textContent = 'Rebuilding the terrain…'; setTimeout(() => { buildFine(+e.target.value); $('loading').style.display = 'none'; }, 30); };
+$('selTrackCol').onchange = e => { trackColour = e.target.value; applyTrackColour(); };
+$('selTrees').onchange = e => { if (treeGroup) treeGroup.visible = e.target.value === '1'; };
+$('selUnits').onchange = e => { units = e.target.value; rebuildMarkers(); computePace(); $('rSpeedU').textContent = units === 'us' ? 'mph' : 'km/h'; };
+function syncPlayUI() { $('btnPlay').textContent = playing ? '❚❚ Pause' : (phone ? '▶ Play' : '▶ Play the ride'); $('btnPlay').classList.toggle('playing', playing); $('bigPlay').style.display = (mode === 'ride' && !playing) ? 'flex' : 'none'; }
+$('btnPlay').onclick = () => { playing = !playing; syncPlayUI(); };
+$('bigPlay').onclick = () => $('btnPlay').click();
+document.querySelectorAll('#ride [data-mult]').forEach(b => b.onclick = () => { mult = +b.dataset.mult; document.querySelectorAll('#ride [data-mult]').forEach(x => x.classList.toggle('on', x === b)); $('btnMult').textContent = b.textContent; });
+const MULTS = [0.5, 1, 2, 4, 8];   // phones get one button that steps through the speeds
+$('btnMult').onclick = () => document.querySelector(`#ride [data-mult="${MULTS[(MULTS.indexOf(mult) + 1) % MULTS.length]}"]`).click();
+$('btnRider').onclick = () => { const open = $('ride').classList.toggle('expanded'); $('btnRider').classList.toggle('on', open); };
+const slider = (id, out, key, fmt) => { $(id).oninput = e => { pace[key] = +e.target.value; $(out).textContent = fmt(+e.target.value); computePace(); }; };
+slider('inWatts', 'vWatts', 'P', v => v); slider('inMass', 'vMass', 'mass', v => v); slider('inNerve', 'vNerve', 'nerve', v => v.toFixed(2));
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.code === 'Space') { e.preventDefault(); if (mode === 'ride') $('btnPlay').click(); }
+  if (e.code === 'ArrowRight') sRide = Math.min(sRide + 50, LEN - 1); if (e.code === 'ArrowLeft') sRide = Math.max(sRide - 50, 0);
+});
+// profile hover / click
+prof.addEventListener('mousemove', e => { const x = e.clientX - prof.getBoundingClientRect().left; hoverS = (x >= PAD.l && x <= PW - PAD.r) ? xToS(x) : null; if (hoverS != null && mode === 'explore') { const p = trackAt(hoverS); hoverMarker.position.set(p.x, (p.e - Z0) * vert + 1.5, p.z); hoverMarker.visible = true; } else hoverMarker.visible = false; });
+prof.addEventListener('mouseleave', () => { hoverS = null; hoverMarker.visible = false; });
+prof.addEventListener('click', e => { const x = e.clientX - prof.getBoundingClientRect().left, s = xToS(x); if (s < 0 || s > LEN) return; if (mode === 'ride') sRide = s; else { showPoint(s); const p = trackAt(s); controls.target.set(p.x, (p.e - Z0) * vert, p.z); const h = headingAt(s); camera.position.set(p.x - Math.sin(h) * 120, (p.e - Z0) * vert + 70, p.z + Math.cos(h) * 120); controls.update(); } });
+function showPoint(s) {
+  const p = trackAt(s), el = $('info'); el.style.display = 'block';
+  const bearing = Math.round((headingAt(s) * 180 / Math.PI + 360) % 360), sf = surfaceAt(s), sk = SURF_KIND[sf[2]];
+  el.innerHTML = `<b>${fmtDist(s)} into the lap</b> · ${fmtEle(p.e)}<br><b style="color:rgb(${sk.rgb.join(',')})">${sk.label}</b>, ${sk.width}: ${sk.pass}${sf[3] ? ' · ' + sf[3] : ''}<br>grade <b>${p.g > 0 ? '+' : ''}${p.g.toFixed(1)}%</b> · heading ${bearing}°` + (pace.t ? ` · about ${fmtTime(timeAt(s))} at ${pace.P} W, ${fmtSpd(speedAt(s))} ${units === 'us' ? 'mph' : 'km/h'}` : '') + `<br><span style="color:var(--dim)">lat ${T.lat[Math.round(s / DS)]}, lon ${T.lon[Math.round(s / DS)]}</span>`;
+  rideMarker.position.set(p.x, (p.e - Z0) * vert + 1.5, p.z); rideMarker.visible = true;
+}
+// click on terrain in explore mode: march the pick ray down onto the heightfield, then snap to the track
+const ray = new THREE.Raycaster(); let downAt = null;
+canvas.addEventListener('pointerdown', e => { if (document.body.classList.contains('menu-open')) setMenu(false); downAt = [e.clientX, e.clientY, performance.now()]; if (mode === 'ride') { lookDrag = { x: e.clientX, y: e.clientY, yaw: lookYaw, pitch: lookPitch }; } });
+let lookDrag = null;
+canvas.addEventListener('pointermove', e => { if (lookDrag && mode === 'ride' && e.buttons) { lookYaw = lookDrag.yaw - (e.clientX - lookDrag.x) * 0.006; lookPitch = Math.max(-0.8, Math.min(0.8, lookDrag.pitch + (e.clientY - lookDrag.y) * 0.004)); } });
+canvas.addEventListener('pointerup', e => {
+  lookDrag = null;
+  if (!downAt || mode !== 'explore' || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 4 || performance.now() - downAt[2] > 400) return;
+  ray.setFromCamera({ x: e.clientX / innerWidth * 2 - 1, y: -(e.clientY / innerHeight) * 2 + 1 }, camera);
+  const o = ray.ray.origin, d = ray.ray.direction; let t = 0, prevT = 0, hit = null;
+  for (let n = 0; n < 4000 && t < 60000; n++) { const x = o.x + d.x * t, y = o.y + d.y * t, z = o.z + d.z * t, ge = groundEle(x, z); if (ge !== null) { const gy = (ge - Z0) * vert; if (y < gy) { let lo = prevT, hi = t; for (let k = 0; k < 12; k++) { const mid = (lo + hi) / 2, ge2 = groundEle(o.x + d.x * mid, o.z + d.z * mid); if (ge2 !== null && o.y + d.y * mid < (ge2 - Z0) * vert) hi = mid; else lo = mid; } hit = [o.x + d.x * hi, o.z + d.z * hi]; break; } prevT = t; t += Math.max(1.5, Math.min(60, (y - gy) * 0.5)); } else { prevT = t; t += 20; } }
+  if (!hit) return;
+  let best = -1, bd = 1e9; for (let i = 0; i < N; i++) { const dd = (T.x[i] - hit[0]) ** 2 + (-T.y[i] - hit[1]) ** 2; if (dd < bd) { bd = dd; best = i; } }
+  if (Math.sqrt(bd) < 30) showPoint(T.s[best]); else { $('info').style.display = 'none'; rideMarker.visible = false; }
+});
+canvas.addEventListener('dblclick', () => { lookYaw = 0; lookPitch = 0; });
+
+// ---------- your position from the device GPS ------------------------------
+// lat/lon -> local metres by an affine fit to the track's own lat/lon pairs (UTM is linear to a few
+// centimetres over a 4 km clip, so this replaces a projection library). Nothing leaves the browser.
+const geo = (() => {
+  const lon0 = T.lon.reduce((a, b) => a + b) / N, lat0 = T.lat.reduce((a, b) => a + b) / N;
+  const fit = out => { // least squares out = c0 + c1·dlon + c2·dlat
+    let s = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], r = [0, 0, 0];
+    for (let i = 0; i < N; i++) { const v = [1, T.lon[i] - lon0, T.lat[i] - lat0]; for (let a = 0; a < 3; a++) { r[a] += v[a] * out[i]; for (let b = 0; b < 3; b++) s[a][b] += v[a] * v[b]; } }
+    for (let k = 0; k < 3; k++) { for (let i = k + 1; i < 3; i++) { const f = s[i][k] / s[k][k]; for (let j = k; j < 3; j++) s[i][j] -= f * s[k][j]; r[i] -= f * r[k]; } }
+    const c = [0, 0, 0]; for (let i = 2; i >= 0; i--) { let v = r[i]; for (let j = i + 1; j < 3; j++) v -= s[i][j] * c[j]; c[i] = v / s[i][i]; } return c;
+  };
+  const cx_ = fit(T.x), cz_ = fit(T.y.map(v => -v));
+  const toLocal = (lat, lon) => ({ x: cx_[0] + cx_[1] * (lon - lon0) + cx_[2] * (lat - lat0), z: cz_[0] + cz_[1] * (lon - lon0) + cz_[2] * (lat - lat0) });
+  let worst = 0; for (let i = 0; i < N; i++) { const q = toLocal(T.lat[i], T.lon[i]); worst = Math.max(worst, Math.hypot(q.x - T.x[i], q.z + T.y[i])); }
+  return { toLocal, worst };
+})();
+let geoWatch = null, geoFollow = false;
+const meGroup = new THREE.Group(); meGroup.visible = false; world.add(meGroup);
+const meDot = new THREE.Mesh(new THREE.SphereGeometry(1.6, 16, 12), new THREE.MeshLambertMaterial({ color: 0xff2d95, emissive: 0x80104a })); meDot.position.y = 1.8; meGroup.add(meDot);
+const mePole = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 7, 6), new THREE.MeshLambertMaterial({ color: 0xff2d95 })); mePole.position.y = 3.5; meGroup.add(mePole);
+const meLabel = labelSprite('YOU', 12, '#ff2d95'); meLabel.position.y = 10; meGroup.add(meLabel);
+let meRing = null;
+function placeMe(lat, lon, acc) {
+  const q = geo.toLocal(lat, lon), ge = groundEle(q.x, q.z), el = $('info'); el.style.display = 'block';
+  let best = -1, bd = 1e18; for (let i = 0; i < N; i++) { const dd = (T.x[i] - q.x) ** 2 + (-T.y[i] - q.z) ** 2; if (dd < bd) { bd = dd; best = i; } }
+  const off = Math.sqrt(bd), accTxt = acc != null ? ` ±${Math.round(acc)} m` : '';
+  if (ge === null) { meGroup.visible = false; const far = Math.hypot(q.x - cx, q.z - cz), b = Math.round((Math.atan2(q.x - cx, -(q.z - cz)) * 180 / Math.PI + 360) % 360); el.innerHTML = `<b>You</b> are ${fmtDist(far)} from the course (bearing ${b}° from its centre)${accTxt}.`; return; }
+  meGroup.position.set(q.x, ge - Z0, q.z); meGroup.visible = true;
+  if (meRing) { meGroup.remove(meRing); meRing.geometry.dispose(); }
+  if (acc && acc > 2) { meRing = new THREE.Mesh(new THREE.RingGeometry(Math.max(acc - 0.6, 0.5), acc + 0.6, 48), new THREE.MeshBasicMaterial({ color: 0xff2d95, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false })); meRing.rotation.x = -Math.PI / 2; meRing.position.y = 0.4; meGroup.add(meRing); }
+  const p = trackAt(T.s[best]);
+  el.innerHTML = `<b>You</b>${accTxt} · ${off < 25 ? `<b>${fmtDist(T.s[best])}</b> into the lap, ${Math.round(off)} m off the line` : `${fmtDist(off)} from the track (nearest point ${fmtDist(T.s[best])} into the lap)`}<br><span style="color:var(--dim)">${fmtEle(ge)} · track there ${p.g > 0 ? '+' : ''}${p.g.toFixed(1)}%</span>`;
+  if (geoFollow && mode === 'explore') { const y = (ge - Z0) * vert; if (!geoFollow.started) { camera.position.set(q.x + 60, y + 70, q.z + 90); geoFollow.started = true; } controls.target.set(q.x, y, q.z); controls.update(); }
+}
+$('btnLocate').onclick = () => {
+  if (geoWatch !== null) { navigator.geolocation.clearWatch(geoWatch); geoWatch = null; geoFollow = false; $('btnLocate').classList.remove('on'); $('btnLocate2').classList.remove('on'); $('btnLocate').textContent = '📍 Locate me'; meGroup.visible = false; $('info').style.display = 'none'; return; }
+  if (!navigator.geolocation || !window.isSecureContext) { $('info').style.display = 'block'; $('info').innerHTML = `Location needs the https link (${RACE.url}) in a phone or laptop browser.`; return; }
+  $('info').style.display = 'block'; $('info').textContent = 'Waiting for a GPS fix…'; geoFollow = { started: false };
+  geoWatch = navigator.geolocation.watchPosition(pos => placeMe(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy),
+    err => { $('info').innerHTML = 'No location: ' + (err.code === 1 ? 'permission was refused. Allow location for this site and tap again.' : err.message); },
+    { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 });
+  $('btnLocate').classList.add('on'); $('btnLocate2').classList.add('on'); $('btnLocate').textContent = '📍 Following you';
+};
+window.setMyLocation = placeMe;   // for testing without a GPS: setMyLocation(lat, lon, accuracy)
+console.log('lat/lon fit worst residual over the track: ' + geo.worst.toFixed(3) + ' m');
+
+// ---------- phone layout -----------------------------------------------------
+// A phone (shorter screen side <= 540 px in either orientation, or a window <= 760 px wide) gets
+// collapsed panels: the title, mode buttons and options move into one sheet behind a Menu button,
+// the compass floats top-right, and the ride controls shrink to one row (CSS under body.phone).
+let phone = null;
+function applyLayout() {
+  const p = Math.min(innerWidth, innerHeight) <= 540 || innerWidth <= 760;
+  if (p === phone) return; phone = p;
+  document.body.classList.toggle('phone', p);
+  if (p) { $('menu').append($('top'), $('opts')); document.body.append($('compass')); }
+  else { setMenu(false); document.body.insertBefore($('top'), $('menu')); document.body.insertBefore($('opts'), $('menu')); $('opts').append($('compass')); }
+  setHelp(); setMenu(false); syncPlayUI(); setFov();
+}
+function setMenu(open) {
+  document.body.classList.toggle('menu-open', open); $('btnMenu').classList.toggle('open', open);
+  $('btnMenu').textContent = open ? '✕ Close' : '☰ ' + (mode === 'ride' ? 'Ride' : 'Explore');
+}
+function setHelp() {
+  const touch = phone || matchMedia('(pointer: coarse)').matches;
+  $('help').textContent = mode === 'ride'
+    ? (touch ? 'Riding at the modelled pace. Drag to look around; tap the profile to jump.' : 'Riding the course at the modelled pace. Drag to look around; the profile shows where you are.')
+    : (touch ? 'Drag to spin · pinch to zoom · two-finger drag to pan · tap the track or the profile for details.' : 'Drag to spin · scroll to zoom · right-drag to pan · click the track or the profile for details.');
+  $('rideHelp').textContent = touch ? 'Drag the view to look around · tap the profile to jump along the lap.' : 'Space = play/pause · ← → = scrub · drag = look around · double-click = look ahead';
+}
+$('btnMenu').onclick = () => setMenu(!document.body.classList.contains('menu-open'));
+$('btnLocate2').onclick = () => $('btnLocate').click();
+['tabExplore', 'tabRide', 'btnStart', 'btnTop', 'btnLocate'].forEach(id => $(id).addEventListener('click', () => setMenu(false)));
+
+// compass: north arrow rotated against the camera's view azimuth
+const comp = $('compass'), cg = comp.getContext('2d');
+function drawCompass() {
+  const f = new THREE.Vector3(); camera.getWorldDirection(f); const az = Math.atan2(f.x, -f.z);
+  cg.setTransform(1, 0, 0, 1, 0, 0); cg.clearRect(0, 0, 112, 112); cg.translate(56, 56); cg.rotate(-az);
+  cg.fillStyle = 'rgba(255,255,255,.12)'; cg.beginPath(); cg.arc(0, 0, 52, 0, 7); cg.fill();
+  cg.fillStyle = '#ff5a5a'; cg.beginPath(); cg.moveTo(0, -46); cg.lineTo(12, 8); cg.lineTo(-12, 8); cg.fill();
+  cg.fillStyle = '#ece9e1'; cg.beginPath(); cg.moveTo(0, 46); cg.lineTo(12, -8); cg.lineTo(-12, -8); cg.fill();
+  cg.fillStyle = '#fff'; cg.font = 'bold 20px Helvetica, Arial'; cg.textAlign = 'center'; cg.fillText('N', 0, -26);
+}
+
+// ---------- ride camera and loop -----------------------------------------
+let hudTick = 0, laps = 0;
+function updateRide(dt) {
+  if (playing) { sRide += speedAt(sRide) * dt * mult; if (sRide >= LEN - 1) { sRide = 0; laps++; } }
+  const p = trackAt(sRide), i0 = Math.min(Math.round(sRide / DS), N - 1), eye = new THREE.Vector3(p.x, (Math.max(p.e, T.zraw[i0]) - Z0) * vert + 1.6, p.z);
+  // look ahead 12-30 m along the track, averaged, so the heading is smooth
+  let ax = 0, az = 0, ae = 0, n = 0; for (let a = 12; a <= 30; a += 6) { const q = trackAt(Math.min(sRide + a, LEN - 1)); ax += q.x; az += q.z; ae += q.e; n++; }
+  ax /= n; az /= n; ae /= n;
+  const base = Math.atan2(az - eye.z, ax - eye.x), dist = Math.hypot(ax - eye.x, az - eye.z), pitch0 = Math.atan2((ae - Z0) * vert + 1.0 - eye.y, dist);
+  const yaw = base + lookYaw, pitch = pitch0 - lookPitch;
+  camera.position.copy(eye); camera.lookAt(eye.x + Math.cos(yaw) * Math.cos(pitch), eye.y + Math.sin(pitch), eye.z + Math.sin(yaw) * Math.cos(pitch));
+  if ((hudTick++ & 3) === 0) {
+    $('rSpeed').textContent = fmtSpd(speedAt(sRide)); $('rGrade').textContent = (p.g > 0 ? '+' : '') + p.g.toFixed(1) + '%'; $('rSurf').textContent = SURF_KIND[surfaceAt(sRide)[2]].label; $('rEle').textContent = fmtEle(p.e);
+    $('rDist').textContent = fmtDist(sRide) + (laps ? ` · lap ${laps + 1}` : ''); $('rTime').textContent = fmtTime(timeAt(sRide));
+    const b = Math.round((headingAt(sRide) * 180 / Math.PI + 360) % 360), dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']; $('rHead').textContent = `${b}° ${dirs[Math.round(b / 45) % 8]}`;
+  }
+}
+// ride camera: at least ~72 degrees side to side, so a portrait phone does not see a 27-degree tunnel
+function setFov() { camera.fov = mode === 'ride' ? 2 * Math.atan(Math.tan(36 * Math.PI / 180) / Math.min(camera.aspect, 1.4)) * 180 / Math.PI : 55; camera.updateProjectionMatrix(); }
+function resize() { applyLayout(); const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; setFov(); drawProfileBase(); }
+window.addEventListener('resize', resize);
+function animate() {
+  requestAnimationFrame(animate);
+  const now = performance.now(), dt = Math.min((now - lastT) / 1000, 0.1); lastT = now;
+  if (mode === 'ride') updateRide(dt); else controls.update();
+  renderer.render(scene, camera); drawCompass(); drawProfile(mode === 'ride' ? sRide : null);
+}
+
+// ---------- boot ---------------------------------------------------------
+(async function init() {
+  const bar = $('lbar');
+  HF = await decodeHeights(window.COURSE_HEIGHTS_PNG, INFO.width, INFO.height, INFO.z0, 100); bar.style.width = '30%';
+  if (BG) { BGHF = await decodeHeights(window.BG_HEIGHTS_PNG, BG.width, BG.height, BG.z0, 10); bar.style.width = '45%'; }
+  const loader = new THREE.TextureLoader();
+  const loadTex = uri => new Promise(res => loader.load(uri, t => { t.encoding = THREE.sRGBEncoding; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); res(t); }));
+  texFine = await loadTex(window.AERIAL_JPG); bar.style.width = '60%';
+  if (BG) texBg = await loadTex(window.BG_AERIAL_JPG);
+  await new Promise(r => setTimeout(r, 20));
+  buildFine(2); bar.style.width = '85%';
+  if (BG) { bgMesh = new THREE.Mesh(buildGrid(BGHF, BG.width, BG.height, 1, bgOff.x, bgOff.z, BG.res, [0, INFO.width - 1, 0, INFO.height - 1]), new THREE.MeshLambertMaterial({ map: texBg })); bgMesh.position.y = -0.5; world.add(bgMesh); }
+  buildTrack(); const tc = buildTrees(); if (tc) document.querySelector('#top .sub').textContent += ` · ${(tc.conifers + tc.broadleaf).toLocaleString()} lidar trees`; computePace(); resize();
+  const p = trackAt(0); controls.target.set(cx, cy, cz); camera.position.set(cx + 0.13 * EXT, cy + 0.40 * EXT, cz + 0.69 * EXT); controls.update();
+  $('loading').style.display = 'none'; lastT = performance.now(); animate();
+})();
+</script>
+</body>
+</html>
