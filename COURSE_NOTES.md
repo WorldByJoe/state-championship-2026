@@ -35,39 +35,43 @@ Friday pre-ride runs 2:00-5:30 PM. Pre-ride is for registered riders and coaches
 
 The GPX is the league's "Racecourse GPX" download. The file itself is named "2025 State Championship Racecourse" and was recorded on 2025-09-10. The league also posts a separate warm-up GPX, which is not used here.
 
+The rider who recorded it stopped six times, for up to 2.5 minutes. While stopped, the GPS kept logging a point a second, wandering 0.1-0.8 m each time and drifting several metres overall, which tied the line in a knot at mile 2.0. The build drops each stop (at least 8 seconds of under 2 m per second that goes less than 8 m) plus 6 m either side, and bridges it with a straight line between points where the rider was clearly moving. That removed about 60 m of jitter. A tight hairpin just before the dirt-road crossing at mile 1.83 is real: the rider carried 4 m/s through it.
+
 | | |
 |---|---|
-| Length | 5.65 mi / 9.09 km |
-| Total ascent | 761 ft / 232 m (the league's 653 ft counts only the larger rises) |
+| Length | 5.61 mi / 9.03 km |
+| Total ascent | 758 ft / 231 m (the league's 653 ft counts only the larger rises) |
 | Start and finish | about 6,880 ft, on the campus field |
 | High point | 7,140 ft at mile 1.03 |
-| Low point | 6,655 ft at mile 4.07 |
+| Low point | 6,655 ft at mile 4.04 |
 | Steepest | about +17% climbing, -18% descending |
 
-The lap climbs 185 ft in its first 0.6 mile and another 87 ft to the high point at mile 1.0. It then descends Dreamer, dropping 295 ft by mile 2.0, and keeps losing height to the low point at mile 4.1. The last 1.6 miles climb back about 320 ft, with pitches near 17%.
+The lap climbs 185 ft in its first 0.6 mile and another 87 ft to the high point at mile 1.0. It then descends Dreamer, dropping about 300 ft by mile 2.0, and keeps losing height to the low point at mile 4.0. The last 1.6 miles climb back about 316 ft, with pitches near 17%.
 
 ## Trail surface and passing
 
 The surface was read from a 24 m strip of the USDA NAIP aerial centred on the race GPX. The image was taken on 7 Sep 2023 at 0.3 m, after the 2022 trail building. Trail names come from OpenStreetMap, which maps 72% of the lap.
 
-| Miles | Surface | Passing |
-|---|---|---|
-| 0.00-0.07 | Campus grass field (start) | Anywhere |
-| 0.07-0.50 | Paved path crossing, then a wide dirt path, about 2-3 m | Yes |
-| 0.50-0.61 | Gravel road | Yes |
-| 0.61-0.97 | Singletrack, Spring Valley Summit Trail | Single file |
-| 0.97-1.06 | Gravel road | Yes |
-| 1.06-1.98 | Singletrack, Dreamer (the long descent) | Single file |
-| 1.98-2.71 | Singletrack through piñon-juniper, then Swoop's Loop | Single file |
-| 2.71-2.97 | Dirt track beside the solar array, about 2.5 m | Yes |
-| 2.97-3.56 | Singletrack, Swoop's Loop then East Ridge Loop | Single file |
-| 3.56-3.70 | East Ridge Loop, wider singletrack about 1.5 m | Tight |
-| 3.70-5.16 | Singletrack, Swoop's Loop, crossing a road at 4.38 | Single file |
-| 5.16-5.26 | Short double-track | Yes |
-| 5.26-5.40 | Singletrack, Spring Valley Summit Trail | Single file |
-| 5.40-5.65 | Wide dirt down to the campus field (finish) | Yes |
+| Miles | Surface | Width | Passing |
+|---|---|---|---|
+| 0.00-0.07 | Campus grass field (start) | taped chute, about 6 m | Anywhere |
+| 0.07-0.50 | Paved path crossing, then a wide dirt path | 2-3 m | Yes |
+| 0.50-0.61 | Gravel road | 4 m | Yes |
+| 0.61-0.97 | Singletrack, Spring Valley Summit Trail | under 1 m | Single file |
+| 0.97-1.06 | Gravel road | 4 m | Yes |
+| 1.06-1.97 | Singletrack, Dreamer (the long descent), crossing a dirt road at 1.84 | under 1 m | Single file |
+| 1.97-2.68 | Singletrack through piñon-juniper, then Swoop's Loop | under 1 m | Single file |
+| 2.68-2.94 | Dirt track beside the solar array | about 2.5 m | Yes |
+| 2.94-3.53 | Singletrack, Swoop's Loop then East Ridge Loop | under 1 m | Single file |
+| 3.53-3.67 | East Ridge Loop, wider singletrack | about 1.5 m | Tight |
+| 3.67-5.13 | Singletrack, Swoop's Loop, crossing a road at 4.35 | under 1 m | Single file |
+| 5.13-5.22 | Short double-track | about 2.5 m | Yes |
+| 5.22-5.36 | Singletrack, Spring Valley Summit Trail | under 1 m | Single file |
+| 5.36-5.61 | Wide dirt down to the campus field (finish) | 2.5 m, then the field | Yes |
 
-That comes to about 4.3 miles of singletrack and 1.3 miles of grass, road or double-track per lap. The opening climb is on the wide first 0.6 mile, the only long stretch with room to pass before 1.6 miles of singletrack over the top and down Dreamer. After that, the wide windows are short: miles 0.97-1.06, 2.71-2.97 and 5.16-5.26, then the run into the finish.
+That comes to about 4.3 miles of singletrack and 1.3 miles of grass, road or double-track per lap. The opening climb is on the wide first 0.6 mile, the only long stretch with room to pass before 1.6 miles of singletrack over the top and down Dreamer. After that, the wide windows are short: miles 0.97-1.06, 2.68-2.94 and 5.13-5.22, then the run into the finish.
+
+The viewer draws the course ribbon at these widths, ramping over 16 m wherever the width changes; from far away it keeps a thin minimum width so the course stays visible.
 
 Limits: the imagery is from September 2023, so any trail work since then does not show. Widths are estimates from 0.3 m pixels. The lidar cannot resolve singletrack width; it has about 5 points per square metre and gives a singletrack only 1-2 points across.
 
@@ -78,11 +82,12 @@ Limits: the imagery is from September 2023, so any trail work since then does no
 - Aerial: USDA NAIP, 7 Sep 2023, 0.3 m, read from Microsoft Planetary Computer because the USGS image service was down (`aerial_course.jpg` at 0.5 m; `naip_0p3.tif` at 0.3 m for the surface reading).
 - Surroundings: 3DEP 1/3 arc-second DEM resampled to 30 m, and NAIP 2023 at 12 m, over 36 x 24 km.
 - Trail names: OpenStreetMap, © OpenStreetMap contributors, ODbL.
+- Solar panels: 158 panel rows, about 10.8 km in all, found in the 2023 aerial by `build_solar.py`. Fixed rows run east-west and are drawn tilted 25° to the south; the tracker rows run north-south and are drawn flat. They are crude slabs about 1.3 m off the ground.
 
 ## Files
 
 - `course_viewer.html`: the viewer. `race_info.js` holds everything specific to this race (titles, link, surface table). Data: `course_data.js`, `aerial_data.js`, `background_data.js`, `trees_data.js`, and `lib/` for three.js.
-- Build order: `build_course.py`, then `fetch_naip.py`, then `build_background.py`, then `build_trees.py <laz folder>`. Settings are in `race_config.json`.
+- Build order: `build_course.py`, then `fetch_naip.py`, then `build_background.py`, then `build_trees.py <laz folder>`, then `build_solar.py`. Settings are in `race_config.json`; the surface table is in `race_info.js`.
 
 ## Sources
 

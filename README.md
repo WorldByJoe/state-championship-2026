@@ -5,6 +5,7 @@ A 3D model of the Colorado High School Cycling League State Championship course 
 **Open the viewer:** https://worldbyjoe.github.io/state-championship-2026/
 
 - **Explore 3D**: drag to spin, scroll or pinch to zoom, right-drag or two-finger drag to pan. Click or tap the track or the elevation profile for distance, elevation, grade, surface, trail name and the predicted time into the lap.
+- **The course ribbon** is drawn at the course's real width: about 6 m on the start field, 4 m on gravel road, 2-3 m on double-track and under 1 m on singletrack, with short flares where it changes. The solar array beside mile 2.7-2.9 is drawn as crude panel rows.
 - **Track colours** show the surface: cyan = grass field, green = gravel road, lime = double-track (room to pass), orange = singletrack (single file). A bar under the elevation profile shows the same zones for the whole lap. Grade colouring is in the options. Chevrons on the track point the direction of travel.
 - **Ride the course**: a rider's-eye tour at a modelled race pace. Play, pause, ½× to 8× speed, drag to look around. Set rider watts, weight and descending nerve to see how the predicted lap changes.
 - **On a phone** the panels fold away: tap **☰** for the mode buttons and options, **📍** to find yourself on the course (location stays on the phone), and in Ride mode use the one-row controls above the profile.
